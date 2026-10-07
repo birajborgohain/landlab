@@ -13,8 +13,8 @@ Instead, it uses ``flow__receiver_node``,
 ``flow__receiver_proportions``, and ``flow__upstream_node_order``
 already present on ``FlowDirectorMFD`` component.
 
-Through this ``FlowAccumulatorMFDSediment``, adaptor or component, 
-Sediment flux can be prescribed at each grid node and routed through the
+Through this ``FlowAccumulatorMFDSediment``component, 
+sediment flux can be prescribed at each grid node and routed through the
 existing MFD network.
 
 This first implementation does not calculate erosion, deposition,
