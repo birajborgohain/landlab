@@ -393,6 +393,24 @@ def test_mfd_sediment_global_conservation():
 # Test that sediment is conserved locally at every node in the MFD network.
 def test_mfd_sediment_node_by_node_conservation():
 
+    """
+    Test that sediment flux is conserved locally at every node in the MFD network.
+
+    For each node, the test calculates the sediment flux routed to all
+    active downstream receivers and verifies that the sum of these
+    contributions equals the sediment flux leaving that node.
+
+    The conservation equation being tested is:
+
+        sum(p_ij * Q_s_i) = Q_s_i
+
+    where p_ij is the MFD routing proportion from node i to receiver j
+    and Q_s_i is the sediment flux leaving node i.
+
+    This test verifies that sediment is neither lost nor created when
+    the sediment flux at a node is distributed among its MFD receivers.
+    """
+
 
 
     # Create the same 10 x 10 raster grid used by the previous tests.
