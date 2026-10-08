@@ -114,6 +114,27 @@ def test_mfd_sediment_routing_from_single_source():
 # at the same downstream receiver.
 def test_mfd_sediment_routing_from_two_converging_sources():
 
+    """
+    Test that sediment from two different upstream nodes, both flowing
+    into the same downstream receiver, is correctly accumulated.
+
+    The test asks whether the sediment-routing code correctly adds the
+    two sediment contributions:
+
+        Q_s_receiver = w_1 * Q_s_1 + w_2 * Q_s_2
+
+    For example, if one source has 100 units of sediment and sends 60%
+    to the receiver, while the second source has 50 units and sends 40%,
+    the receiver should receive:
+
+        60 + 20 = 80
+
+    This test specifically checks sediment accumulation at a converging
+    node and verifies that the second contribution does not overwrite
+    the first contribution.
+    """
+
+
     # Create the same simple raster grid used by the first MFD sediment test.
     mg = RasterModelGrid((10, 10))
 
@@ -237,24 +258,24 @@ def test_mfd_sediment_routing_from_two_converging_sources():
 def test_mfd_sediment_global_conservation():
 
     """
-    Test that sediment from two different upstream nodes, both flowing
-    into the same downstream receiver, is correctly accumulated.
+    Test that total sediment flux is conserved across the entire MFD network.
 
-    The test asks whether the sediment-routing code correctly adds the
-    two sediment contributions:
+    A known amount of sediment is introduced at an interior source node
+    and routed through the complete MFD network. The test then compares
+    the total sediment entering the system with the total sediment leaving
+    through all outlet nodes.
 
-        Q_s_receiver = w_1 * Q_s_1 + w_2 * Q_s_2
+    The global conservation equation being tested is:
 
-    For example, if one source has 100 units of sediment and sends 60%
-    to the receiver, while the second source has 50 units and sends 40%,
-    the receiver should receive:
+        sum(Q_s_outlet) = sum(Q_s_input)
 
-        60 + 20 = 80
+    where Q_s_input is the prescribed sediment flux entering the network
+    and Q_s_outlet is the sediment flux leaving through the outlet nodes.
 
-    This test specifically checks sediment accumulation at a converging
-    node and verifies that the second contribution does not overwrite
-    the first contribution.
+    This test verifies that sediment is neither lost nor created during
+    transport through the complete MFD network.
     """
+
 
     # Create a simple 10 x 10 raster grid.
     # We use the same geometry as our previous MFD routing tests
@@ -372,23 +393,7 @@ def test_mfd_sediment_global_conservation():
 # Test that sediment is conserved locally at every node in the MFD network.
 def test_mfd_sediment_node_by_node_conservation():
 
-    """
-    Test that sediment flux is conserved locally at every node in the MFD network.
 
-    For each node, the test calculates the sediment flux routed to all
-    active downstream receivers and verifies that the sum of these
-    contributions equals the sediment flux leaving the node.
-
-    The conservation equation being tested is:
-
-        sum(w_ij * Q_s_i) = Q_s_i
-
-    where w_ij is the MFD routing proportion from node i to receiver j
-    and Q_s_i is the sediment flux leaving node i.
-
-    This test verifies that sediment is neither lost nor created when
-    the sediment flux at a node is distributed among its MFD receivers.
-    """
 
     # Create the same 10 x 10 raster grid used by the previous tests.
     # Using the same geometry makes the MFD network familiar and reproducible.
