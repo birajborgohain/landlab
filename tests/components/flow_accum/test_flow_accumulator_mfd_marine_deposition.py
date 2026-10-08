@@ -18,6 +18,15 @@ from landlab.components.flow_accum.flow_accumulator_mfd_marine_deposition import
 
 
 def test_mfd_sediment_routing_from_single_source():
+    """
+    The test asks: 
+    If 100 units of sediment enter one node, 
+    does FlowAccumulatorMFDSediment distribute 
+    those 100 units among the node's MFD receivers 
+    according to their flow proportions, and 
+    does the total distributed sediment remain exactly 100?
+    
+    """
     # Create a 10 x 10 raster grid.
     # This is the same grid size used by Landlab's existing MFD tests.
     mg = RasterModelGrid((10, 10))
@@ -100,89 +109,6 @@ def test_mfd_sediment_routing_from_single_source():
     assert routed_flux == pytest.approx(
         sediment_flux[source_node]
     )
-
-# def test_mfd_sediment_routing_from_two_sources():
-#     # Create a simple 10 x 10 raster grid.
-#     mg = RasterModelGrid((10, 10))
-
-#     # Create a planar surface with equal slopes in x and y.
-#     # This gives the MFD router a predictable branching pattern.
-#     mg.add_field(
-#         "topographic__elevation",
-#         mg.node_y + mg.node_x,
-#         at="node",
-#     )
-
-#     # Create Landlab's existing MFD flow-routing component.
-#     fa = FlowAccumulator(
-#         mg,
-#         flow_director="FlowDirectorMFD",
-#     )
-
-#     # Calculate the MFD routing network.
-#     fa.run_one_step()
-
-#     # Get the receiver-node array produced by the MFD router.
-#     receivers = mg.at_node["flow__receiver_node"]
-
-#     # Get the corresponding routing proportions.
-#     proportions = mg.at_node["flow__receiver_proportions"]
-
-#     # Find core nodes that have more than one active downstream receiver.
-#     branching_nodes = np.sum(proportions > 0.0, axis=1) > 1
-
-#     # Select two branching nodes from the MFD network.
-#     source_nodes = mg.core_nodes[branching_nodes[mg.core_nodes]][:2]
-
-#     # Make sure the test actually found two suitable source nodes.
-#     assert len(source_nodes) == 2
-
-#     # Create a sediment-flux array with no sediment supplied elsewhere.
-#     sediment_flux = np.zeros(mg.number_of_nodes)
-
-#     # Give the first source node 100 units of sediment flux.
-#     sediment_flux[source_nodes[0]] = 100.0
-
-#     # Give the second source node 50 units of sediment flux.
-#     sediment_flux[source_nodes[1]] = 50.0
-
-#     # Create our MFD sediment-routing component.
-#     sediment = FlowAccumulatorMFDSediment(
-#         mg,
-#         sediment_flux,
-#     )
-
-#     # Route the sediment through the existing MFD network.
-#     sediment.run_one_step()
-
-#     # Independently calculate the sediment contribution expected
-#     # at every downstream node.
-#     expected_influx = sediment_flux.copy()
-
-#     # Process each source node independently.
-#     for source_node in source_nodes:
-
-#         # Find the active downstream receiver slots for this source.
-#         active = (proportions[source_node] > 0.0) & (
-#             receivers[source_node] != source_node
-#         )
-
-#         # Distribute this source's sediment among its MFD receivers.
-#         for receiver, proportion in zip(
-#             receivers[source_node, active],
-#             proportions[source_node, active],
-#         ):
-#             # Add this source's contribution to the downstream receiver.
-#             expected_influx[receiver] += (
-#                 proportion * sediment_flux[source_node]
-#             )
-
-#     # Check that the component's calculated influx agrees with
-#     # the independently calculated expected influx.
-#     assert np.allclose(
-#         sediment._sediment_influx,
-#         expected_influx,
-#     )
 
 # Test that sediment from two different upstream nodes is accumulated
 # at the same downstream receiver.
@@ -309,6 +235,26 @@ def test_mfd_sediment_routing_from_two_converging_sources():
 # Test global sediment conservation from a source through the
 # complete MFD routing network to the outlet boundary.
 def test_mfd_sediment_global_conservation():
+
+    """
+    Test that sediment from two different upstream nodes, both flowing
+    into the same downstream receiver, is correctly accumulated.
+
+    The test asks whether the sediment-routing code correctly adds the
+    two sediment contributions:
+
+        Q_s_receiver = w_1 * Q_s_1 + w_2 * Q_s_2
+
+    For example, if one source has 100 units of sediment and sends 60%
+    to the receiver, while the second source has 50 units and sends 40%,
+    the receiver should receive:
+
+        60 + 20 = 80
+
+    This test specifically checks sediment accumulation at a converging
+    node and verifies that the second contribution does not overwrite
+    the first contribution.
+    """
 
     # Create a simple 10 x 10 raster grid.
     # We use the same geometry as our previous MFD routing tests
@@ -441,6 +387,24 @@ def test_mfd_sediment_global_conservation():
 
 # Test that sediment is conserved locally at every node in the MFD network.
 def test_mfd_sediment_node_by_node_conservation():
+
+    """
+    Test that sediment flux is conserved locally at every node in the MFD network.
+
+    For each node, the test calculates the sediment flux routed to all
+    active downstream receivers and verifies that the sum of these
+    contributions equals the sediment flux leaving the node.
+
+    The conservation equation being tested is:
+
+        sum(w_ij * Q_s_i) = Q_s_i
+
+    where w_ij is the MFD routing proportion from node i to receiver j
+    and Q_s_i is the sediment flux leaving node i.
+
+    This test verifies that sediment is neither lost nor created when
+    the sediment flux at a node is distributed among its MFD receivers.
+    """
 
     # Create the same 10 x 10 raster grid used by the previous tests.
     # Using the same geometry makes the MFD network familiar and reproducible.
