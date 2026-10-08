@@ -289,22 +289,6 @@ def test_mfd_sediment_global_conservation():
     # The active proportions for a node should sum to one.
     proportions = mg.at_node["flow__receiver_proportions"]
 
-    # # Identify nodes that have at least one active downstream receiver.
-    # # A positive proportion means that the node sends sediment
-    # # to that receiver.
-    # has_receiver = np.any(
-    #     proportions > 0.0,
-    #     axis=1,
-    # )
-
-    # # Identify outlet nodes as nodes with no active downstream receiver.
-    # # These nodes represent the boundary through which sediment
-    # # leaves the routing network.
-    # outlet_nodes = ~has_receiver
-
-    # # Make sure that the test geometry actually contains at least
-    # # one outlet node.
-    # assert np.any(outlet_nodes)
 
     # Identify nodes that have a real downstream receiver.
     # A receiver is real only when its proportion is positive and
