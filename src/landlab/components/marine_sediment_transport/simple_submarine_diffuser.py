@@ -4,6 +4,7 @@ import numpy as np
 from landlab.components import LinearDiffuser
 
 _TINY_DIFFUSIVITY = 1.0e-20
+_SECONDS_PER_YEAR = 365.25 * 24 * 60 * 60
 
 
 class SimpleSubmarineDiffuser(LinearDiffuser):
@@ -96,6 +97,15 @@ class SimpleSubmarineDiffuser(LinearDiffuser):
             "mapping": "node",
             "doc": "Thickness of deposition or erosion in latest time step",
         },
+        # added info for sediment influx field to be used in the component
+        "sediment__influx": {
+            "dtype": "float",
+            "intent": "in",
+            "optional": False,
+            "units": "m3/s",
+            "mapping": "node",
+            "doc": "Sediment volume influx delivered to each node",
+        },
     }
 
     def __init__(
@@ -136,7 +146,30 @@ class SimpleSubmarineDiffuser(LinearDiffuser):
             grid.add_zeros("sediment_deposit__thickness", at="node")
         if "water__depth" not in grid.at_node:
             grid.add_zeros("water__depth", at="node")
+
         self._depth = grid.at_node["water__depth"]
+
+        # If the field named "sediment__influx" does not exist among the grid's node fields,
+        # execute the following code.
+        if "sediment__influx" not in grid.at_node:
+
+            # Add the "sediment__influx" field to the grid,
+            # initializing its value to zero at every node.
+            grid.add_zeros("sediment__influx", at="node")
+
+        # Otherwise, skip grid.add_zeros() and keep the existing field and its values unchanged.
+        # Give self._sediment_influx access to the same sediment influx array
+        # that is stored in the grid.
+        self._sediment_influx = grid.at_node["sediment__influx"]
+
+        # Create a node field to store the elevation change caused by submarine diffusion
+        # during the latest time step, if the field does not already exist.
+        # Initialize it to zero at every node.
+        if "submarine_diffusion__elevation_change" not in grid.at_node:
+            grid.add_zeros(
+                "submarine_diffusion__elevation_change",
+                at="node",
+            )
 
         self._time = 0.0
 
@@ -239,7 +272,45 @@ class SimpleSubmarineDiffuser(LinearDiffuser):
 
         super().run_one_step(dt)
 
-        depo = self.grid.at_node["sediment_deposit__thickness"]
-        depo[:] = self.grid.at_node["topographic__elevation"] - z_before
+        # Record the elevation change produced by diffusion
+        # at every node during this time step.
+        diffusion_change = self.grid.at_node[
+            "submarine_diffusion__elevation_change"
+        ]
+        diffusion_change[:] = (
+            self.grid.at_node["topographic__elevation"] - z_before
+        )
+
+        # depo = self.grid.at_node["sediment_deposit__thickness"]
+        # depo[:] = self.grid.at_node["topographic__elevation"] - z_before
+        
+        # Calculate sediment thickness deposited during this timestep.
+        sediment_influx = self.grid.at_node["sediment__influx"]
+        sediment_thickness = self.grid.at_node[
+            "sediment_deposit__thickness"
+        ]
+        area = self.grid.cell_area_at_node
+
+        # Convert the timestep from years to seconds.
+        dt_seconds = dt * _SECONDS_PER_YEAR
+
+        # Reset the thickness field for the current timestep.
+        sediment_thickness[:] = 0.0
+
+        # Identify underwater nodes with positive receiving area.
+        sea_level = self.grid.at_grid["sea_level__elevation"]
+        elevation = self.grid.at_node["topographic__elevation"]
+        marine_nodes = (elevation < sea_level) & (area > 0.0)
+
+        # Calculate deposited thickness at marine nodes.
+        sediment_thickness[marine_nodes] = (
+            sediment_influx[marine_nodes]
+            * dt_seconds
+            / area[marine_nodes]
+        )
+
+        # Add deposited sediment to the post-diffusion elevation.
+        elevation[marine_nodes] += sediment_thickness[marine_nodes]
+
 
         self._time += dt
