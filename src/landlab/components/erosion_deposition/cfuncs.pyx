@@ -15,6 +15,7 @@ cdef extern from "math.h":
 cpdef void calculate_qs_in(
     const id_t [:] stack_flip_ud,
     const id_t [:] flow_receivers,
+    const cython.uchar[:] is_land,
     const cython.floating [:] cell_area_at_node,
     const cython.floating [:] q,
     cython.floating [:] qs,
@@ -44,7 +45,7 @@ cpdef void calculate_qs_in(
         #
         # there is water flux (q) and this node is not a pit then calculate qs.
 
-        if q[node] > 0 and flow_receivers[node] != node:
+        if (is_land[node] and q[node] > 0 and flow_receivers[node] != node):
             qs[node] = (
                 (
                     qs_in[node]

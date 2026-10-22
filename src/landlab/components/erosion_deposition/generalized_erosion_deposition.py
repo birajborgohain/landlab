@@ -95,6 +95,8 @@ class _GeneralizedErosionDeposition(Component):
         v_s,
         discharge_field="surface_water__discharge",
         dt_min=DEFAULT_MINIMUM_TIME_STEP,
+        status_at_node=None,
+        sea_level=0.0,
     ):
         """Initialize the GeneralizedErosionDeposition model.
 
@@ -123,12 +125,31 @@ class _GeneralizedErosionDeposition(Component):
 
         super().__init__(grid)
 
+        # Boundary statuses used by this component.
+        if status_at_node is None:
+            # Default: reference the grid-owned array.
+            self._status_at_node = grid.status_at_node
+        else:
+            # User-supplied component-specific array.
+            status_at_node = np.asarray(status_at_node)
+
+            if status_at_node.shape != (grid.number_of_nodes,):
+                raise ValueError(
+                    "status_at_node must have one value per grid node."
+                )
+
+            if not np.issubdtype(status_at_node.dtype, np.integer):
+                raise TypeError("status_at_node must contain integer status codes.")
+
+            self._status_at_node = status_at_node
+
         self._flow_receivers = grid.at_node["flow__receiver_node"]
         self._stack = grid.at_node["flow__upstream_node_order"]
         self._topographic__elevation = grid.at_node["topographic__elevation"]
         self._slope = grid.at_node["topographic__steepest_slope"]
         self._link_to_receiver = grid.at_node["flow__link_to_receiver_node"]
         self._cell_area_at_node = grid.cell_area_at_node
+        self._sea_level = sea_level
 
         if isinstance(grid, RasterModelGrid):
             self._link_lengths = grid.length_of_d8
@@ -218,7 +239,10 @@ class _GeneralizedErosionDeposition(Component):
 
         True where core node is flooded or self-draining.
         """
-        is_core = self._grid.status_at_node == self._grid.BC_NODE_IS_CORE
+        # is_core = self._grid.status_at_node == self._grid.BC_NODE_IS_CORE
+        # For user-supplied component-specific array
+        is_core = (self._status_at_node == self._grid.BC_NODE_IS_CORE)
+
         if self._depressions_are_handled():
             is_flooded_core = is_core & (
                 self._grid.at_node["flood_status_code"] == _FLOODED
@@ -228,3 +252,62 @@ class _GeneralizedErosionDeposition(Component):
                 self._flow_receivers == self._grid.nodes.flatten()
             )
         return np.asarray(is_flooded_core)
+
+    def update_status_from_elevation(self, sea_level):
+        """
+        Classify the component's nodes according to their elevation
+        relative to sea level.
+
+        Originally core nodes are classified as:
+        - CORE when elevation >= sea_level (land nodes).
+        - FIXED_VALUE when elevation < sea_level (marine nodes).
+
+        Original external boundary nodes retain their grid status.
+        """
+
+        # Get the model grid associated with this ErosionDeposition component.
+        grid = self._grid
+
+        # Check whether the component uses the grid's shared status array.
+        # If both refer to the same array, changing component statuses would
+        # also change the grid statuses and affect other components.
+        if self._status_at_node is grid.status_at_node:
+            # Stop execution because this method requires an independent array.
+            raise ValueError(
+                "Supply an independent status_at_node array before "
+                "using elevation-based classification."
+            )
+
+        # Create a Boolean mask identifying nodes that are currently CORE
+        # according to the grid's shared boundary-status array.
+        # True means the node is originally considered a core node here.
+        original_core = (
+            grid.status_at_node == grid.BC_NODE_IS_CORE
+        )
+
+        # Get the current topographic elevation at every grid node.
+        # This is the elevation field used to distinguish land from marine nodes.
+        z = self._topographic__elevation
+
+        # Create a Boolean mask identifying nodes below sea level.
+        # True means marine; False means at or above sea level.
+        marine = z < sea_level
+
+        # Copy the grid's current boundary statuses into the component's
+        # independent status array. This preserves the statuses of external
+        # boundary nodes before the interior nodes are reclassified.
+        self._status_at_node[:] = grid.status_at_node
+
+        # Find nodes that are both originally CORE and below sea level.
+        # Assign them FIXED_VALUE status for this component so they are
+        # excluded from its core-node elevation updates.
+        self._status_at_node[original_core & marine] = (
+            grid.BC_NODE_IS_FIXED_VALUE
+        )
+
+        # Find nodes that are both originally CORE and at or above sea level.
+        # Keep them as CORE so ErosionDeposition can update their elevations.
+        # The ~ operator means logical NOT, so ~marine selects non-marine nodes.
+        self._status_at_node[original_core & ~marine] = (
+            grid.BC_NODE_IS_CORE
+        )

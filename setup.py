@@ -69,11 +69,12 @@ ext_modules = cythonize(
             library_dirs=library_dirs,
             libraries=libraries,
             extra_link_args=extra_link_args,
+            
         )
         for path in cython_files
     ],
     compiler_directives={"embedsignature": True, "language_level": 3},
-    nthreads=_build_cpu_count(),
+    nthreads=0,
 )
 
 

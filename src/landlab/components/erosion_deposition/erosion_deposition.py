@@ -264,6 +264,8 @@ class ErosionDeposition(_GeneralizedErosionDeposition):
         solver="basic",
         smooth_threshold=True,
         dt_min=DEFAULT_MINIMUM_TIME_STEP,
+        status_at_node=None,
+        sea_level=0.0,
     ):
         """Initialize the ErosionDeposition model.
 
@@ -314,6 +316,8 @@ class ErosionDeposition(_GeneralizedErosionDeposition):
             v_s=v_s,
             dt_min=dt_min,
             discharge_field=discharge_field,
+            status_at_node=status_at_node,
+            sea_level=sea_level,
         )
 
         if grid.at_node["flow__receiver_node"].size != grid.size("node"):
@@ -385,11 +389,15 @@ class ErosionDeposition(_GeneralizedErosionDeposition):
 
         v_s = np.broadcast_to(self.v_s, self._q.shape)
 
+        is_land = np.ascontiguousarray(self._topographic__elevation >= self._sea_level,dtype=np.uint8,)
+    
+
         # iterate top to bottom through the stack, calculate qs
         # cythonized version of calculating qs_in
         calculate_qs_in(
             np.flipud(self._stack),
             self._flow_receivers,
+            is_land,
             self._cell_area_at_node,
             self._q,
             self._qs,
@@ -397,6 +405,18 @@ class ErosionDeposition(_GeneralizedErosionDeposition):
             self._erosion_term,
             v_s,
             self._F_f,
+        )
+
+        marine = is_land == 0
+
+        print("Marine nodes:", np.count_nonzero(marine))
+        print("Marine nodes with nonzero qs:",
+            np.count_nonzero(self._qs[marine]))
+        print("Maximum marine qs:",
+            np.max(np.abs(self._qs[marine])))
+
+        assert np.all(self._qs[marine] == 0.0), (
+            "Marine nodes have nonzero qs after calculate_qs_in"
         )
 
         positive_q = self._q > 0.0
@@ -422,7 +442,8 @@ class ErosionDeposition(_GeneralizedErosionDeposition):
         self._calc_qs_in_and_depo_rate()
 
         # topo elev is old elev + deposition - erosion
-        cores = self._grid.core_nodes
+        # cores = self._grid.core_nodes
+        cores = np.flatnonzero(self._status_at_node == self._grid.BC_NODE_IS_CORE)
         dzdt = self._depo_rate - self._erosion_term
         self._topographic__elevation[cores] += dzdt[cores] * dt
 
